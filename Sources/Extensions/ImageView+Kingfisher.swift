@@ -81,26 +81,30 @@ extension KingfisherWrapper where Base: ImageView {
         completionHandler: ((Result<RetrieveImageResult, KingfisherError>) -> Void)? = nil) -> DownloadTask?
     {
         var mutatingSelf = self
+        //当传入的source为空时,使用guard语句提前退出
+        // Source是一个协议,URL遵守此协议.Source有两个属性,cacheKey和downloadURL
         guard let source = source else {
             mutatingSelf.placeholder = placeholder
             mutatingSelf.taskIdentifier = nil
             completionHandler?(.failure(KingfisherError.imageSettingError(reason: .emptySource)))
             return nil
         }
-
+        
+        // 图片加载过程中是否显示placeholder
         var options = KingfisherParsedOptionsInfo(KingfisherManager.shared.defaultOptions + (options ?? .empty))
         let noImageOrPlaceholderSet = base.image == nil && self.placeholder == nil
         if !options.keepCurrentImageWhileLoading || noImageOrPlaceholderSet {
             // Always set placeholder while there is no image/placeholder yet.
             mutatingSelf.placeholder = placeholder
         }
-
+        
+        // 如果indicator存在，开启转圈动画
         let maybeIndicator = indicator
         maybeIndicator?.startAnimatingView()
 
         let issuedIdentifier = Source.Identifier.next()
         mutatingSelf.taskIdentifier = issuedIdentifier
-
+       
         if base.shouldPreloadAllAnimation() {
             options.preloadAllAnimationData = true
         }
@@ -119,12 +123,16 @@ extension KingfisherWrapper where Base: ImageView {
             $0.onShouldApply = { issuedIdentifier == self.taskIdentifier }
         }
 
+        //  调用KingfisherManager的方法来获取图片
         let task = KingfisherManager.shared.retrieveImage(
             with: source,
             options: options,
             completionHandler: { result in
+                                
                 CallbackQueue.mainCurrentOrAsync.execute {
+                    
                     maybeIndicator?.stopAnimatingView()
+                    
                     guard issuedIdentifier == self.taskIdentifier else {
                         let reason: KingfisherError.ImageSettingErrorReason
                         do {
@@ -141,6 +149,9 @@ extension KingfisherWrapper where Base: ImageView {
                     mutatingSelf.imageTask = nil
                     mutatingSelf.taskIdentifier = nil
                     
+                    // 如果成功了，那么将ImageView的image设置为下载的image(value.image)
+                    // 否则，使用将ImageView的image设置为options.onFailureImage。
+                    // 执行completionHandler函数
                     switch result {
                     case .success(let value):
                         guard self.needsTransition(options: options, cacheType: value.cacheType) else {
